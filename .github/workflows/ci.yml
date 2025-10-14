@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        ports:
+          - 5433:5432
+        env:
+          POSTGRES_DB: idaas_test
+          POSTGRES_USER: idaas_test
+          POSTGRES_PASSWORD: idaas_test
+        options: >-
+          --health-cmd "pg_isready -U idaas_test" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://idaas_test:idaas_test@localhost:5433/idaas_test?schema=public
+      JWT_SECRET: test-secret
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install
+      - run: npx prisma generate
+      - run: npm run lint
+      - run: npx prisma migrate deploy
+      - run: npm test

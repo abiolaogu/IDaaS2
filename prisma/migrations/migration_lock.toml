@@ -1,0 +1,2 @@
+# This file ensures that the Prisma migrations history is consistent.
+provider = "postgresql"

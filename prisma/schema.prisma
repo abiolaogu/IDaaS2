@@ -1,0 +1,63 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  slug        String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  applications Application[]
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String
+  password    String
+  displayName String
+  roles       String[]
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([email, tenantId])
+}
+
+model Application {
+  id          String   @id @default(uuid())
+  name        String
+  clientId    String   @unique
+  clientSecret String
+  redirectUris String[]
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+enum AuditAction {
+  USER_CREATED
+  USER_AUTHENTICATED
+  TOKEN_ISSUED
+  APPLICATION_REGISTERED
+}
+
+model AuditLog {
+  id        String      @id @default(uuid())
+  actorId   String?
+  tenantId  String?
+  action    AuditAction
+  metadata  Json
+  createdAt DateTime    @default(now())
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  actor  User?   @relation(fields: [actorId], references: [id])
+}

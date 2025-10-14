@@ -1,146 +1,164 @@
-# IDaaS Platform as a Service Blueprint
+# IDaaS SaaS Reference Implementation
 
-## Vision
-Deliver an Identity-as-a-Service (IDaaS) platform comparable to industry leaders such as Okta, Auth0, PingOne, and Azure AD. The platform should enable secure, scalable, and compliant identity management for B2B, B2C, and B2E use cases while remaining extensible to future requirements.
+This repository contains a deployable reference implementation of an Identity-as-a-Service (IDaaS) multi-tenant SaaS platform. It includes:
 
-## Tenancy & Delivery Model
-- **SaaS-first multi-tenant architecture** with tenant-isolated data partitions and logical isolation via tenant IDs.
-- **Dedicated tenant option** for customers requiring data residency, custom encryption keys, or dedicated compliance scopes.
-- **Self-service onboarding** with automated tenant provisioning, guided setup wizard, and sandbox/production environments.
+- A TypeScript/Express API with tenant-aware user, application, and authentication endpoints.
+- PostgreSQL persistence managed with Prisma ORM and automated migrations.
+- Audit logging for critical identity events.
+- Automated Jest integration tests that exercise end-to-end flows.
+- Docker images and Compose orchestration for production-like deployments.
+- GitHub Actions CI pipeline for linting, testing, and Prisma schema validation.
 
-## High-Level Architecture
+## Architecture Overview
+
+| Layer | Technology | Purpose |
+| --- | --- | --- |
+| API | Node.js 20, Express, TypeScript | REST endpoints, multi-tenant logic |
+| Data | PostgreSQL 15 | Durable storage for tenants, users, applications, audit logs |
+| ORM | Prisma 5 | Schema management, type-safe data access |
+| Auth | JSON Web Tokens | Tenant-scoped access tokens with role claims |
+| Validation | Zod | Declarative payload validation |
+| Observability | Morgan | Request logging |
+| Security | bcrypt | Password hashing |
+
+### Key Capabilities
+
+- **Tenant onboarding** via `/api/tenants`.
+- **User lifecycle management** with tenant role enforcement.
+- **Application registration** issuing OAuth-style client credentials.
+- **Authentication** returning signed JWT access tokens.
+- **Audit trail** capturing user and application events.
+
+## Prerequisites
+
+- Node.js 20+
+- npm 9+
+- Docker & Docker Compose (for local DB and containerized deployments)
+
+## Getting Started
+
+1. **Install dependencies**
+   ```bash
+   npm install
+   ```
+
+2. **Generate Prisma client**
+   ```bash
+   npx prisma generate
+   ```
+
+3. **Start infrastructure**
+   ```bash
+   docker compose up -d postgres
+   ```
+
+4. **Apply database migrations**
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+5. **Run the API in development mode**
+   ```bash
+   npm run dev
+   ```
+
+The API will be available at `http://localhost:3000` by default.
+
+### Example Workflow
+
+```bash
+# Create a tenant
+curl -X POST http://localhost:3000/api/tenants \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Acme Corp","slug":"acme"}'
+
+# Bootstrap an admin for the tenant
+npm run bootstrap:admin -- --tenant-slug acme --email admin@acme.com --password Secur3P@ss --name "Acme Admin"
+
+# Authenticate to obtain a JWT
+token=$(curl -s -X POST http://localhost:3000/api/auth/token \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@acme.com","password":"Secur3P@ss","tenantSlug":"acme"}' | jq -r '.token')
+
+# Use the token to create a standard user
+curl -X POST http://localhost:3000/api/users \
+  -H "Authorization: Bearer $token" \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@acme.com","password":"UserP@ss1","displayName":"User","roles":["user"]}'
 ```
-               +------------------------+             +-----------------------+
-               |  Customer Applications |<--OIDC/SAML->|  Authentication Edge  |
-               +------------------------+             +-----------+-----------+
-                                                              |
-                                                              v
-                +--------------------------+     +----------------------------+
-                |  Identity Core Services  |<--->|  Policy & Risk Engine      |
-                |  (Accounts, Sessions,    |     |  (Adaptive MFA, device     |
-                |   Passwordless, MFA,     |     |   trust, threat intel)     |
-                |   Federation)            |     +----------------------------+
-                +-----------+--------------+
-                            |
-                            v
-        +-------------------+---------------------+
-        |    Directory, Profile, & Lifecycle      |
-        |    (SCIM, HRIS, entitlements)           |
-        +-------------------+---------------------+
-                            |
-                            v
-               +------------+-------------+
-               |  Integration Layer       |
-               |  (Event bus, webhooks,   |
-               |   workflow orchestration)|
-               +------------+-------------+
-                            |
-                            v
-            +---------------+---------------+
-            |  Shared Platform Services     |
-            |  (Audit, Analytics, Billing,  |
-            |   Secrets Mgmt, Observability)|
-            +---------------+---------------+
+
+The bootstrap script uses the same validation rules as the API to avoid bypassing guardrails.
+
+## Testing
+
+Run the full integration test suite. It expects a PostgreSQL instance reachable on `localhost:5433` with database `idaas_test`, username `idaas_test`, and password `idaas_test` (the CI pipeline provisions this automatically).
+
+```bash
+# Start an ephemeral Postgres instance for testing
+DockerID=$(docker run -d --rm \
+  -e POSTGRES_USER=idaas_test \
+  -e POSTGRES_PASSWORD=idaas_test \
+  -e POSTGRES_DB=idaas_test \
+  -p 5433:5432 \
+  postgres:15-alpine)
+
+npm test
+
+docker stop "$DockerID"
 ```
 
-## Core Service Domains
-1. **Authentication Edge**
-   - Supports OAuth2/OIDC, SAML 2.0, WS-Fed, and passwordless (FIDO2/WebAuthn, magic links, passkeys).
-   - Adaptive MFA with device fingerprinting, location risk scoring, and push notifications.
-   - API rate limiting, bot detection, and WAF integration.
+The Jest configuration automatically deploys Prisma migrations and cleans tables between tests.
 
-2. **Identity Core Services**
-   - User store with schema extensibility, profile versioning, and soft delete.
-   - Session management supporting refresh tokens, device-bound tokens, and step-up auth.
-   - Social login federation (Google, Microsoft, Apple) with just-in-time provisioning.
+## Linting
 
-3. **Directory, Profile & Lifecycle**
-   - Standards-based provisioning (SCIM 2.0) to target SaaS apps and HRIS connectors.
-   - Lifecycle workflows (joiner-mover-leaver), approval tasks, and entitlement catalogs.
-   - Automated deprovisioning with access reviews and certification campaigns.
+```bash
+npm run lint
+```
 
-4. **Policy & Risk Engine**
-   - Centralized policy as code (OPA or Cedar) for authorization decisions.
-   - Contextual risk scoring leveraging UEBA signals, threat intel feeds, and anomaly detection.
-   - Fine-grained resource authorization (RBAC, ABAC) with dynamic policies.
+## Docker Deployment
 
-5. **Integration Layer**
-   - Event-driven architecture using Kafka/Pulsar for streaming identity events.
-   - Workflow orchestrator (Temporal/Camunda) for long-running business processes.
-   - Marketplace of pre-built connectors and low-code integration builder.
+Build and run the platform with Docker Compose:
 
-6. **Shared Platform Services**
-   - Unified audit and compliance data lake with tamper-evident logging.
-   - Real-time analytics dashboards, reporting APIs, and scheduled exports.
-   - Usage-based billing service with subscription plans and metering.
-   - Secrets management (HashiCorp Vault/AWS KMS) and centralized configuration.
+```bash
+docker compose up --build
+```
 
-## Technology Stack
-- **Frontend**: React + TypeScript admin console, Next.js for login experiences, Tailwind CSS, Storybook for component library.
-- **Backend**: Kotlin (Spring Boot) microservices for identity core; Node.js (NestJS) for integration marketplace; Go for high-performance auth edge services.
-- **Identity Protocols**: Keycloak or open-source Ory stack for foundational capabilities extended with custom services.
-- **Data Stores**:
-  - PostgreSQL (multi-tenant partitioning) for relational data.
-  - Redis & DynamoDB/Scylla for session/token caching.
-  - Elasticsearch/OpenSearch for audit and search.
-  - Neo4j/JanusGraph for relationship-based authorization use cases.
-- **Eventing & Workflows**: Apache Kafka, Debezium CDC, Temporal workflows.
-- **Security Tooling**: Vault/KMS, AWS Cognito device farm for compliance testing, Snyk/Trivy for container scanning.
-- **Infrastructure**: Kubernetes (EKS/GKE/AKS) with service mesh (Istio), GitOps (ArgoCD), Terraform for IaC.
-- **Observability**: OpenTelemetry, Prometheus, Grafana, Loki, Jaeger.
-- **CI/CD**: GitHub Actions/GitLab CI, automated security gates, blue/green and canary deployments via Argo Rollouts.
+Environment variables for the API service can be overridden via the Compose file or a `.env` file.
 
-## Platform Capabilities Alignment with Best-in-Class Providers
-- **Okta/Auth0-style Developer Experience**: Comprehensive SDKs, quickstarts, Postman collections, CLI for tenant automation, customizable login pages, and extensible Rules/Actions engine.
-- **Ping/Azure AD Enterprise Readiness**: Hybrid identity connectors, AD sync, delegated admin, SLA-backed global deployments with geo-failover, and compliance certifications (SOC 2 Type II, ISO 27001, HIPAA, FedRAMP High roadmap).
-- **ForgeRock-like Adaptive Security**: Risk-based access, continuous authentication, threat insights, and contextual policies.
+## Continuous Integration
 
-## Security & Compliance Guardrails
-- Zero Trust architecture with continuous verification and microservice-to-microservice mTLS.
-- Customer-managed keys (CMK) option and per-tenant encryption keys.
-- Data residency controls supporting US, EU, and APAC regions with sovereign cloud options.
-- Automated compliance evidence collection, audit trails, and policy-driven data retention.
-- Privacy-by-design: consent management, data minimization, GDPR/CCPA data subject tooling.
+GitHub Actions configuration in `.github/workflows/ci.yml` executes linting, Prisma validation, and tests against a PostgreSQL service on every push and pull request.
 
-## Extensibility & Ecosystem
-- Public APIs with versioning, SDKs (JS, Java, .NET, Python, Go), and GraphQL façade for admin queries.
-- Event hooks, custom actions, and serverless extensions via AWS Lambda/Cloudflare Workers.
-- App marketplace for partner integrations, monetizable through billing engine.
+## Project Structure
 
-## Operations & Support
-- Multi-region active-active deployments with automated failover and chaos engineering practices.
-- Tiered support model (Standard, Premium, Mission Critical) with 24/7 SRE on-call.
-- Customer tenant health dashboard, proactive incident notification, and RCA transparency.
+```
+├── prisma
+│   ├── migrations              # Database migrations
+│   └── schema.prisma          # Data model and migrations source
+├── src
+│   ├── controllers            # HTTP controllers
+│   ├── middleware             # Authentication middleware
+│   ├── routes                 # Express routers
+│   ├── services               # Domain logic
+│   ├── utils                  # Shared utilities
+│   └── server.ts              # Application entrypoint
+├── tests                      # Jest integration tests
+├── scripts                    # Operational helper scripts
+├── Dockerfile                 # Production container build
+├── docker-compose.yml         # Local orchestration
+└── .github/workflows/ci.yml   # CI/CD pipeline
+```
 
-## Implementation Roadmap
-1. **Foundational MVP (Months 0-3)**
-   - Implement auth edge with OIDC/OAuth2, user store, MFA, and basic admin console.
-   - Multi-tenant data model, tenant provisioning pipeline, and observability baseline.
-   - Launch developer portal with SDKs for web/mobile and sandbox tenants.
+## Security Notes
 
-2. **Enterprise Expansion (Months 4-7)**
-   - Add SAML, SCIM provisioning, lifecycle workflows, and integration marketplace.
-   - Deploy policy/risk engine, adaptive MFA, and analytics dashboards.
-   - Achieve SOC 2 Type I, finalize billing & subscription management.
-
-3. **Advanced Intelligence & Compliance (Months 8-12)**
-   - UEBA-driven risk scoring, continuous authentication, and AI-powered anomaly detection.
-   - Regional deployments with data residency features and CMK support.
-   - Achieve SOC 2 Type II, ISO 27001, HIPAA readiness.
-
-4. **Ecosystem & Marketplace Scale (Months 12+)**
-   - Expand connector library, low-code workflow builder, and partner certification program.
-   - Launch dedicated tenant offering and industry-specific compliance packages (FedRAMP, PCI DSS).
-   - Introduce advanced access governance (IGA) capabilities and entitlement analytics.
-
-## Success Metrics
-- Authentication success rate > 99.99% with P99 latency < 200ms at the edge.
-- Tenant onboarding time < 10 minutes end-to-end.
-- 0 critical security findings in quarterly assessments.
-- NPS > 45 for developer experience and admin usability.
-- Annual churn < 5% with revenue expansion via premium security add-ons.
+- Always configure a strong `JWT_SECRET` before deploying to production.
+- Use secrets management (e.g., AWS Secrets Manager, HashiCorp Vault) rather than plaintext environment variables.
+- Enforce HTTPS termination and secure cookie policies at your ingress layer.
+- Enable database TLS in production environments.
 
 ## Next Steps
-- Validate architecture with security, compliance, and finance stakeholders.
-- Prioritize feature backlog based on target customer segments (SaaS, enterprise, public sector).
-- Begin MVP build-out using the proposed stack, with iterative delivery and customer feedback loops.
+
+- Integrate with external identity providers via SAML/OIDC federation.
+- Add multi-factor authentication and adaptive risk scoring.
+- Expand audit analytics and reporting dashboards.
+- Implement customer-facing admin UI consuming these APIs.
