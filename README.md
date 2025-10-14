@@ -121,3 +121,6 @@ This layout matches the original slide guidance and aligns with GitOps best prac
 * Prepare long-term roadmap (delegated admin, policy intelligence, identity analytics, partner ecosystems).
 
 This blueprint provides the end-to-end plan to deliver a SaaS IDaaS platform, leveraging the original stack while enhancing it with battle-tested practices from industry leaders.
+# IDaaS2
+
+This repository contains an implementation blueprint for delivering an Identity as a Service (IDaaS) platform as a multi-tenant SaaS. Review the [IDaaS SaaS Platform Blueprint](docs/idaas-saas-platform.md) for architecture, roadmap, and operational guidance derived from the accompanying presentation.
