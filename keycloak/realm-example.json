@@ -1,0 +1,10 @@
+{
+  "realm": "example",
+  "enabled": true,
+  "users": [
+    {
+      "username": "testuser",
+      "enabled": true
+    }
+  ]
+}
