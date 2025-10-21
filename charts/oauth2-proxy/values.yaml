@@ -1,0 +1,23 @@
+replicaCount: 1
+
+image:
+  repository: quay.io/oauth2-proxy/oauth2-proxy
+  tag: "v7.3.0"
+  pullPolicy: IfNotPresent
+
+config:
+  clientID: "your-client-id" # Placeholder
+  clientSecret: "your-client-secret" # Placeholder
+  cookieSecret: "your-cookie-secret" # Placeholder
+  provider: "oidc"
+
+  oidc:
+    issuerUrl: "https://your-keycloak-url/auth/realms/your-realm" # Placeholder
+    emailDomain: "*"
+
+  # This is the service the proxy will protect
+  upstream: "http://your-upstream-service" # Placeholder
+
+service:
+  type: ClusterIP
+  port: 80

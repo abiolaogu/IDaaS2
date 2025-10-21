@@ -1,0 +1,19 @@
+replicaCount: 1
+
+image:
+  repository: "user/app" # Placeholder
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: "nginx" # Example, depends on the Ingress controller
+  hosts:
+    - host: "webapp.example.com" # Placeholder
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
