@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-oauth2-proxy
+  labels:
+    app: oauth2-proxy
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --provider={{ .Values.config.provider }}
+            - --oidc-issuer-url={{ .Values.config.oidc.issuerUrl }}
+            - --client-id={{ .Values.config.clientID }}
+            - --client-secret={{ .Values.config.clientSecret }}
+            - --cookie-secret={{ .Values.config.cookieSecret }}
+            - --email-domain={{ .Values.config.oidc.emailDomain }}
+            - --upstream={{ .Values.config.upstream }}
+            - --http-address=0.0.0.0:4180
+          ports:
+            - name: http
+              containerPort: 4180
+              protocol: TCP

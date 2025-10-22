@@ -14,15 +14,16 @@ This document describes the SaaS Identity-as-a-Service platform for the organiza
 
 ## Platform Architecture
 
-The platform uses a hub-and-spoke model where Cloudflare Zero Trust provides global ingress and Zero-Trust Network Access (ZTNA). Traffic is routed to regional Kubernetes clusters managed by Rancher. Each cluster runs:
+The platform uses a self-hosted Zero Trust Network Access (ZTNA) model. Traffic is routed to regional Kubernetes clusters managed by Rancher. Each cluster runs:
 
 * **Keycloak** for tenant-scoped identity services (OIDC, OAuth2, SAML, LDAP federation).
+* **OAuth2 Proxy** as a reverse proxy that enforces authentication and authorization before brokering traffic to downstream services.
 * **API Gateways** (Kong or Istio) that enforce policies, perform token validation, and broker traffic to downstream services.
 * **SCIM Synchronization Service** that handles provisioning and deprovisioning workflows across SaaS and internal apps.
 * **YugabyteDB** as the globally replicated data store for identities, sessions, consents, and policy metadata.
 * **OpenLDAP/FreeIPA** clusters exposed via Keycloak LDAP storage provider for workloads that require traditional directory access.
 
-Cloudflare Anycast DNS/LB provides the global control plane, while the data plane is regionalized to meet latency and data residency requirements. Secrets and signing keys are stored in HSM-backed vaults (CloudHSM, AWS KMS, or Azure Key Vault) with automated rotation.
+Secrets and signing keys are stored in HSM-backed vaults (CloudHSM, AWS KMS, or Azure Key Vault) with automated rotation.
 
 ### Identity & Access Protocols
 
@@ -40,7 +41,6 @@ Cloudflare Anycast DNS/LB provides the global control plane, while the data plan
 
 ### Security Controls
 
-* Inline posture evaluation at Cloudflare Access with device certificates, WAF, and DDoS mitigation.
 * Token lifecycle management with JWKS endpoints, kid rotation, and mutual TLS for service-to-service calls.
 * Fine-grained authorization through Keycloak authorization services, OPA/ORY Keto policies, and attribute-based access control.
 * Comprehensive audit logging for admin actions, authentication events, SCIM changes, and API usage, streamed into a SIEM (Splunk, Datadog, Panther).
@@ -57,7 +57,7 @@ Cloudflare Anycast DNS/LB provides the global control plane, while the data plan
 
 ### CI/CD Pipeline
 
-* GitLab CI orchestrates linting, testing, container builds, security scans, and Helm-based deployments across environments (review apps, staging, prod).
+* Jenkins orchestrates linting, testing, container builds, security scans, and Helm-based deployments across environments (review apps, staging, prod).
 * Helm charts package Kubernetes resources; Argo CD or FluxCD performs GitOps-based reconciliations for declarative environments.
 * Security gates include SAST/DAST, IaC scans, container vulnerability scanning, and policy-as-code checks before promotion.
 
@@ -65,11 +65,11 @@ Cloudflare Anycast DNS/LB provides the global control plane, while the data plan
 
 ```
 repo/
-├── infra/        # Terraform, Crossplane, and Ansible automation for clusters, DNS, Cloudflare, HSMs
-├── charts/       # Helm charts for Keycloak, YugabyteDB, SCIM services, observability stack, Cloudflare tunnel connectors
+├── infra/        # Terraform automation for clusters, DNS, and other infrastructure
+├── charts/       # Helm charts for Keycloak, YugabyteDB, SCIM services, observability stack, and the ZTNA proxy
 ├── apps/         # Source code & Dockerfiles for SCIM sync, admin portal, integration webhooks, and tooling
 ├── keycloak/     # Realm templates, client registrations, policy JSON, script providers, themes for branding per-tenant
-└── ops/          # Runbooks, incident response plans, audit controls, Cloudflare Access policies, key rotation scripts
+└── ops/          # Runbooks, incident response plans, and audit controls
 ```
 
 This layout matches the original slide guidance and aligns with GitOps best practices, enabling infrastructure automation alongside application delivery.
@@ -88,39 +88,22 @@ This layout matches the original slide guidance and aligns with GitOps best prac
 * Marketplace of pre-built SaaS integrations (Salesforce, Google Workspace, Atlassian, ServiceNow) using SCIM and SAML/OIDC app catalogs.
 * Advanced analytics dashboards for login trends, risk events, provisioning status, and compliance exports.
 
-## Implementation Roadmap
+## MFA Authenticator App
 
-1. **Foundation (Months 0-2)**
-   * Stand up multi-region Kubernetes clusters with Rancher, configure Cloudflare tunnels, DNS, and Access policies.
-   * Deploy core Keycloak cluster, YugabyteDB, observability stack, and GitLab CI pipelines.
-   * Establish secrets management, HSM connections, and base audit logging.
-2. **Core Services (Months 2-4)**
-   * Implement SCIM service, LDAP federation/storage, and zero-trust app connectors.
-   * Configure multi-tenant realm templates, theming, and baseline policies.
-   * Integrate adaptive MFA/WebAuthn, device posture checks, and token governance.
-3. **Integrations & Migration (Months 4-6)**
-   * Build marketplace connectors, legacy SAML/LDAP migrations, and custom API integrations.
-   * Run pilot with internal apps, gather telemetry, and iterate on access policies.
-4. **Hardening & Launch (Months 6-8)**
-   * Complete compliance audits, DR tests, penetration testing, and SLA instrumentation.
-   * Roll out customer self-service portal, billing integration, and production monitoring.
+This repository includes the source code for a mobile MFA authenticator app, located in the `apps/mfa-authenticator` directory. The app is built with Flutter and is compatible with the TOTP standard used by Keycloak.
 
-## Competitive Alignment & Differentiators
+### Features
 
-* **Feature Parity**: Matches SaaS heavyweights with OIDC, LDAP, SCIM, adaptive MFA, RBAC/ABAC, and zero-trust controls.
-* **Hybrid Excellence**: Bridges modern and legacy workloads while enabling gradual modernization.
-* **Open-Core Flexibility**: Built on Keycloak and Cloudflare, allowing customization, on-prem extensions, and transparent governance.
-* **Developer-First**: Emphasis on automation, GitOps, API-first operations, and rich SDK ecosystem.
-* **Security-First**: HSM-backed key management, continuous posture assessment, and deep observability for compliance-driven customers.
+*   **TOTP Generation:** The app can generate 6-digit TOTP codes from a secret key.
+*   **QR Code Scanning:** New accounts can be added by scanning a QR code from Keycloak.
 
-## Next Steps
+### Building the App
 
-* Finalize product requirements and SLAs with stakeholders.
-* Build proof-of-concept environment and validate with top integration targets.
-* Establish go-to-market messaging and pricing aligned with SaaS delivery model.
-* Prepare long-term roadmap (delegated admin, policy intelligence, identity analytics, partner ecosystems).
+To build the app, you will need to have the Flutter SDK installed. From the `apps/mfa-authenticator` directory, run the following commands:
 
-This blueprint provides the end-to-end plan to deliver a SaaS IDaaS platform, leveraging the original stack while enhancing it with battle-tested practices from industry leaders.
-# IDaaS2
+```bash
+flutter pub get
+flutter run
+```
 
-This repository contains an implementation blueprint for delivering an Identity as a Service (IDaaS) platform as a multi-tenant SaaS. Review the [IDaaS SaaS Platform Blueprint](docs/idaas-saas-platform.md) for architecture, roadmap, and operational guidance derived from the accompanying presentation.
+**Note:** The QR code scanner requires camera permissions. You will need to configure these permissions in the Android and iOS projects before building a release version.
