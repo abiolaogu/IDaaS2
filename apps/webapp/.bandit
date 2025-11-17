@@ -1,0 +1,12 @@
+[bandit]
+# Bandit configuration file
+exclude_dirs = /tests,/venv,/env,/__pycache__,.pytest_cache
+
+# Skip certain test IDs if needed
+# skips = B101,B601
+
+[bandit.formatters]
+# Output format options
+
+[bandit.plugins]
+# Plugin configuration
