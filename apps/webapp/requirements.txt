@@ -1,1 +1,26 @@
-Flask
+# Flask framework
+Flask==3.0.0
+
+# Production WSGI server
+gunicorn==21.2.0
+
+# Security
+flask-talisman==1.1.0
+
+# Environment management
+python-dotenv==1.0.0
+
+# Development and testing dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-flask==1.3.0
+requests==2.31.0
+
+# Code quality
+bandit==1.7.5
+safety==2.3.5
+flake8==6.1.0
+black==23.12.1
+
+# Monitoring and logging
+prometheus-flask-exporter==0.23.0

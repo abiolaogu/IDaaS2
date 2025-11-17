@@ -1,0 +1,84 @@
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: idaas-platform-trigger-template
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: git-repo-url
+      description: The git repository url
+    - name: git-revision
+      description: The git revision
+      default: main
+    - name: git-repo-name
+      description: The name of the deployment to be created / patched
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: idaas-platform-run-
+        namespace: tekton-pipelines
+      spec:
+        pipelineRef:
+          name: idaas-platform-pipeline
+        params:
+          - name: repo-url
+            value: $(tt.params.git-repo-url)
+          - name: revision
+            value: $(tt.params.git-revision)
+          - name: image-webapp
+            value: docker.io/your-registry/idaas-webapp:$(tt.params.git-revision)
+          - name: image-keycloak
+            value: docker.io/your-registry/idaas-keycloak:$(tt.params.git-revision)
+          - name: image-oauth2-proxy
+            value: docker.io/your-registry/idaas-oauth2-proxy:$(tt.params.git-revision)
+        workspaces:
+          - name: shared-data
+            volumeClaimTemplate:
+              spec:
+                accessModes:
+                  - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+          - name: docker-credentials
+            secret:
+              secretName: docker-credentials
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: idaas-platform-trigger-binding
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: git-repo-url
+      value: $(body.repository.url)
+    - name: git-revision
+      value: $(body.head_commit.id)
+    - name: git-repo-name
+      value: $(body.repository.name)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: idaas-platform-listener
+  namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: github-listener
+      interceptors:
+        - ref:
+            name: "github"
+          params:
+            - name: "secretRef"
+              value:
+                secretName: github-webhook-secret
+                secretKey: secretToken
+            - name: "eventTypes"
+              value: ["push"]
+      bindings:
+        - ref: idaas-platform-trigger-binding
+      template:
+        ref: idaas-platform-trigger-template

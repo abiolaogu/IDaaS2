@@ -107,3 +107,276 @@ flutter run
 ```
 
 **Note:** The QR code scanner requires camera permissions. You will need to configure these permissions in the Android and iOS projects before building a release version.
+
+## Getting Started
+
+### Quick Start with Docker Compose
+
+The fastest way to get the IDaaS Platform running locally:
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/IDaaS2.git
+cd IDaaS2
+
+# Start all services
+docker-compose up -d
+
+# Access the applications
+# - Keycloak Admin Console: http://localhost:8080 (admin/admin)
+# - Webapp (via OAuth2 Proxy): http://localhost:4180
+# - Webapp (direct): http://localhost:8081
+```
+
+### Development Setup
+
+For local development with hot-reload:
+
+```bash
+# Use development compose file
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Install Python dependencies
+cd apps/webapp
+pip install -r requirements.txt
+
+# Run tests
+pytest tests/ -v
+```
+
+## Application Architecture
+
+The refactored Flask webapp follows modern best practices:
+
+### Project Structure
+
+```
+apps/webapp/
+├── app.py              # Application factory
+├── config.py           # Configuration management
+├── extensions.py       # Flask extensions and middleware
+├── routes.py           # API routes and views
+├── requirements.txt    # Python dependencies
+├── Dockerfile          # Multi-stage production build
+├── tests/              # Unit tests
+│   ├── test_app.py
+│   ├── test_config.py
+│   └── test_routes.py
+└── pytest.ini          # Test configuration
+```
+
+### Key Features
+
+- **Application Factory Pattern**: Clean separation of concerns
+- **Configuration Management**: Environment-based configuration
+- **Comprehensive Logging**: Structured logging with configurable levels
+- **Security Headers**: Automatic security header injection
+- **Error Handling**: Graceful error handling with proper HTTP status codes
+- **Health Checks**: Kubernetes-ready health, readiness, and liveness probes
+- **Production Ready**: Uses Gunicorn WSGI server with proper worker configuration
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Main page with authentication status |
+| `GET /health` | Health check endpoint |
+| `GET /readiness` | Kubernetes readiness probe |
+| `GET /liveness` | Kubernetes liveness probe |
+| `GET /metrics` | Application metrics |
+| `GET /api/user-info` | Authenticated user information |
+
+## Testing
+
+### Unit Tests
+
+Comprehensive unit test suite with 80%+ code coverage:
+
+```bash
+cd apps/webapp
+
+# Run tests with coverage
+pytest tests/ -v --cov=. --cov-report=html
+
+# View coverage report
+open htmlcov/index.html
+```
+
+### End-to-End Tests
+
+E2E tests verify the complete authentication flow:
+
+```bash
+# Start services
+docker-compose up -d
+
+# Run E2E tests
+pip install -r tests/requirements.txt
+E2E_BASE_URL=http://localhost:8081 pytest tests/e2e_test.py -v
+```
+
+Test coverage includes:
+- Health endpoint verification
+- Authentication flows (unauthenticated and authenticated)
+- OAuth2 Proxy header forwarding
+- API endpoint functionality
+- Security header presence
+- Performance benchmarks
+
+## Security Scanning
+
+The project includes comprehensive security scanning tools:
+
+### Automated Security Scans
+
+Run all security scans with a single command:
+
+```bash
+./scripts/run-all-scans.sh
+```
+
+This executes:
+1. **Dependency Scanning** (Safety, pip-audit): Checks Python packages for known vulnerabilities
+2. **SAST** (Bandit, Flake8): Static code analysis for security issues
+3. **Container Scanning** (Trivy): Scans Docker images for OS and application vulnerabilities
+
+### Individual Scans
+
+```bash
+# Dependency vulnerabilities
+./scripts/dependency-scan.sh
+
+# Static code analysis
+./scripts/sast-scan.sh
+
+# Container image scanning
+./scripts/security-scan.sh
+```
+
+All reports are saved to `security-reports/` directory.
+
+## CI/CD Pipelines
+
+The platform supports two CI/CD options:
+
+### Jenkins Pipeline
+
+Comprehensive Jenkinsfile with stages for:
+- Code linting (Helm, Python)
+- Dependency vulnerability scanning
+- SAST scanning
+- Unit tests with coverage
+- Multi-stage Docker builds
+- Container security scanning
+- Integration testing
+- Automated deployment to staging/production
+
+### Tekton Pipeline
+
+Kubernetes-native CI/CD with:
+- Reusable task definitions
+- Git clone, build, test, and scan tasks
+- Webhook-triggered automation
+- GitOps-friendly architecture
+
+See [tekton/README.md](tekton/README.md) for Tekton setup and usage.
+
+## Docker Images
+
+All components use production-hardened, multi-stage Docker builds:
+
+### Webapp
+- **Base**: Python 3.11-slim
+- **Features**: Non-root user, health checks, Gunicorn WSGI server
+- **Size**: Optimized with multi-stage build
+
+### Keycloak
+- **Base**: Official Keycloak 23.0
+- **Features**: Production-optimized build, PostgreSQL support, health checks
+
+### OAuth2 Proxy
+- **Base**: Official OAuth2 Proxy 7.5.1-alpine
+- **Features**: Minimal Alpine-based image, health checks
+
+Build all images:
+```bash
+docker-compose build
+```
+
+## Deployment
+
+### Kubernetes Deployment
+
+Deploy using Helm charts:
+
+```bash
+# Create namespace
+kubectl create namespace idaas-platform
+
+# Deploy Keycloak
+helm upgrade --install keycloak charts/keycloak \
+  --namespace idaas-platform \
+  --wait
+
+# Deploy OAuth2 Proxy
+helm upgrade --install oauth2-proxy charts/oauth2-proxy \
+  --namespace idaas-platform \
+  --wait
+
+# Deploy Webapp
+helm upgrade --install webapp charts/webapp \
+  --namespace idaas-platform \
+  --wait
+```
+
+### Configuration
+
+Environment variables for webapp:
+- `FLASK_ENV`: Environment (development/production)
+- `LOG_LEVEL`: Logging level (DEBUG/INFO/WARNING/ERROR)
+- `SECRET_KEY`: Application secret key (required in production)
+
+See [docs/CICD_DEPLOYMENT.md](docs/CICD_DEPLOYMENT.md) for comprehensive deployment documentation.
+
+## Documentation
+
+- **[CI/CD and Deployment Guide](docs/CICD_DEPLOYMENT.md)**: Complete guide for CI/CD pipelines and deployment
+- **[Tekton Setup](tekton/README.md)**: Kubernetes-native CI/CD with Tekton
+- **[Architecture Documentation](docs/idaas-saas-platform.md)**: Platform architecture and design
+
+## Development Guidelines
+
+### Code Quality
+
+- Follow PEP 8 style guide for Python code
+- Maintain 80%+ test coverage
+- Run security scans before committing
+- Use type hints where applicable
+
+### Security Best Practices
+
+- Never commit secrets or credentials
+- Use environment variables for configuration
+- Run security scans in CI/CD
+- Keep dependencies up to date
+- Follow principle of least privilege
+
+### Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Run tests and security scans
+4. Submit a pull request
+
+## Monitoring and Observability
+
+The platform includes built-in observability features:
+
+- **Health Checks**: Multiple health endpoints for monitoring
+- **Structured Logging**: JSON-formatted logs for easy parsing
+- **Metrics Endpoint**: Application metrics for Prometheus
+- **Request Logging**: Automatic logging of all requests with timing
+
+## License
+
+See LICENSE file for details.

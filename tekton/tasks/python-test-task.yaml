@@ -1,0 +1,49 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: python-test
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: Testing
+    tekton.dev/tags: python, pytest
+    tekton.dev/displayName: "Python Tests"
+spec:
+  description: >-
+    This Task runs Python unit tests using pytest.
+  workspaces:
+    - name: source
+      description: The source code workspace
+  params:
+    - name: REQUIREMENTS_FILE
+      description: Path to requirements.txt
+      default: requirements.txt
+    - name: TEST_PATH
+      description: Path to tests
+      default: tests/
+    - name: PYTHON_IMAGE
+      description: Python image to use
+      default: python:3.11-slim
+  steps:
+    - name: install-dependencies
+      image: $(params.PYTHON_IMAGE)
+      workingDir: $(workspaces.source.path)/apps/webapp
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        pip install --upgrade pip
+        pip install -r $(params.REQUIREMENTS_FILE)
+
+    - name: run-tests
+      image: $(params.PYTHON_IMAGE)
+      workingDir: $(workspaces.source.path)/apps/webapp
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        pytest $(params.TEST_PATH) \
+          --cov=. \
+          --cov-report=xml \
+          --cov-report=term \
+          -v

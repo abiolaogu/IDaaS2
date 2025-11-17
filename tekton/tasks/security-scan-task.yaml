@@ -1,0 +1,63 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: security-scan
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/categories: Security
+    tekton.dev/tags: security, trivy, bandit
+    tekton.dev/displayName: "Security Scanning"
+spec:
+  description: >-
+    This Task performs security scanning using Trivy and Bandit.
+  workspaces:
+    - name: source
+      description: The source code workspace
+  params:
+    - name: IMAGE
+      description: Image to scan
+      type: string
+    - name: SEVERITY
+      description: Severity levels to scan for
+      default: "HIGH,CRITICAL"
+    - name: TRIVY_IMAGE
+      description: Trivy scanner image
+      default: aquasec/trivy:latest
+  steps:
+    - name: trivy-scan
+      image: $(params.TRIVY_IMAGE)
+      script: |
+        #!/bin/sh
+        set -e
+        echo "Scanning image: $(params.IMAGE)"
+        trivy image \
+          --severity $(params.SEVERITY) \
+          --format table \
+          $(params.IMAGE)
+
+    - name: bandit-scan
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)/apps/webapp
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        pip install bandit
+        echo "Running SAST with Bandit..."
+        bandit -r . \
+          --exclude ./tests,./venv,./env \
+          --severity-level medium \
+          -f txt || true
+
+    - name: dependency-scan
+      image: python:3.11-slim
+      workingDir: $(workspaces.source.path)/apps/webapp
+      script: |
+        #!/usr/bin/env bash
+        set -e
+        pip install safety pip-audit
+        echo "Scanning Python dependencies..."
+        safety check --file requirements.txt || true
+        pip-audit --requirement requirements.txt || true

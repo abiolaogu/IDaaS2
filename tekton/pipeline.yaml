@@ -1,0 +1,151 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: idaas-platform-pipeline
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/displayName: "IDaaS Platform CI/CD Pipeline"
+spec:
+  description: >-
+    Complete CI/CD pipeline for the IDaaS Platform including build, test,
+    security scanning, and deployment.
+  params:
+    - name: repo-url
+      type: string
+      description: The git repository URL to clone from.
+    - name: revision
+      type: string
+      description: The git branch/tag/commit to checkout.
+      default: "main"
+    - name: image-webapp
+      type: string
+      description: Webapp image name
+      default: "idaas-webapp:latest"
+    - name: image-keycloak
+      type: string
+      description: Keycloak image name
+      default: "idaas-keycloak:latest"
+    - name: image-oauth2-proxy
+      type: string
+      description: OAuth2 Proxy image name
+      default: "idaas-oauth2-proxy:latest"
+  workspaces:
+    - name: shared-data
+      description: This workspace contains the cloned repo files
+    - name: docker-credentials
+      description: Docker registry credentials
+  tasks:
+    # Task 1: Clone the repository
+    - name: fetch-source
+      taskRef:
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: shared-data
+      params:
+        - name: url
+          value: $(params.repo-url)
+        - name: revision
+          value: $(params.revision)
+
+    # Task 2: Run unit tests
+    - name: run-tests
+      taskRef:
+        name: python-test
+      runAfter:
+        - fetch-source
+      workspaces:
+        - name: source
+          workspace: shared-data
+
+    # Task 3: Build webapp image
+    - name: build-webapp
+      taskRef:
+        name: build-docker-image
+      runAfter:
+        - run-tests
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image-webapp)
+        - name: DOCKERFILE
+          value: apps/webapp/Dockerfile
+        - name: CONTEXT
+          value: apps/webapp
+
+    # Task 4: Build Keycloak image
+    - name: build-keycloak
+      taskRef:
+        name: build-docker-image
+      runAfter:
+        - run-tests
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image-keycloak)
+        - name: DOCKERFILE
+          value: apps/keycloak/Dockerfile
+        - name: CONTEXT
+          value: apps/keycloak
+
+    # Task 5: Build OAuth2 Proxy image
+    - name: build-oauth2-proxy
+      taskRef:
+        name: build-docker-image
+      runAfter:
+        - run-tests
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image-oauth2-proxy)
+        - name: DOCKERFILE
+          value: apps/oauth2-proxy/Dockerfile
+        - name: CONTEXT
+          value: apps/oauth2-proxy
+
+    # Task 6: Security scan webapp
+    - name: scan-webapp
+      taskRef:
+        name: security-scan
+      runAfter:
+        - build-webapp
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image-webapp)
+
+    # Task 7: Security scan Keycloak
+    - name: scan-keycloak
+      taskRef:
+        name: security-scan
+      runAfter:
+        - build-keycloak
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image-keycloak)
+
+    # Task 8: Security scan OAuth2 Proxy
+    - name: scan-oauth2-proxy
+      taskRef:
+        name: security-scan
+      runAfter:
+        - build-oauth2-proxy
+      workspaces:
+        - name: source
+          workspace: shared-data
+      params:
+        - name: IMAGE
+          value: $(params.image-oauth2-proxy)

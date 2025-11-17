@@ -1,0 +1,36 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: idaas-platform-run-
+  namespace: tekton-pipelines
+  labels:
+    app.kubernetes.io/version: "0.1"
+spec:
+  pipelineRef:
+    name: idaas-platform-pipeline
+  params:
+    - name: repo-url
+      value: https://github.com/your-org/IDaaS2.git
+    - name: revision
+      value: main
+    - name: image-webapp
+      value: docker.io/your-registry/idaas-webapp:latest
+    - name: image-keycloak
+      value: docker.io/your-registry/idaas-keycloak:latest
+    - name: image-oauth2-proxy
+      value: docker.io/your-registry/idaas-oauth2-proxy:latest
+  workspaces:
+    - name: shared-data
+      volumeClaimTemplate:
+        spec:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 1Gi
+    - name: docker-credentials
+      secret:
+        secretName: docker-credentials
+  podTemplate:
+    securityContext:
+      fsGroup: 65532

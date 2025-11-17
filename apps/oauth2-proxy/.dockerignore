@@ -1,0 +1,16 @@
+# Version control
+.git
+.gitignore
+
+# Documentation
+README.md
+*.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+Jenkinsfile
+
+# Development
+.env
+docker-compose*.yml

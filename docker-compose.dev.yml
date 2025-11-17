@@ -1,0 +1,32 @@
+version: '3.8'
+
+# Development-specific overrides
+services:
+  webapp:
+    build:
+      target: builder
+    environment:
+      FLASK_ENV: development
+      FLASK_DEBUG: "1"
+      LOG_LEVEL: DEBUG
+    volumes:
+      - ./apps/webapp:/app
+      - /app/__pycache__
+    command: ["flask", "run", "--host=0.0.0.0", "--port=8080", "--reload"]
+    ports:
+      - "5000:8080"
+
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: keycloak_dev
+      POSTGRES_USER: keycloak_dev
+      POSTGRES_PASSWORD: dev_password
+
+  keycloak:
+    environment:
+      KC_LOG_LEVEL: DEBUG
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_dev
+      KC_DB_USERNAME: keycloak_dev
+      KC_DB_PASSWORD: dev_password
