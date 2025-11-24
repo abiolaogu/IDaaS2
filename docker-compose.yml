@@ -63,6 +63,7 @@ services:
         VCS_REF: ${VCS_REF:-dev}
     container_name: idaas-webapp
     environment:
+      FLASK_APP: app:create_app()
       FLASK_ENV: development
       LOG_LEVEL: DEBUG
       APP_HOST: 0.0.0.0
