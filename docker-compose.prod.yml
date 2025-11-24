@@ -4,17 +4,43 @@ version: '3.8'
 # Override base docker-compose.yml for production deployments
 
 services:
-  postgres:
+  yugabytedb:
     restart: always
+    image: yugabytedb/yugabyte:2.21.0.0-b545
+    command: >
+      bin/yugabyted start
+      --daemon=false
+      --ui=false
+      --tserver_flags="yb_enable_read_committed_isolation=true,ysql_max_connections=400"
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-keycloak_prod}
-      POSTGRES_USER: ${POSTGRES_USER:-keycloak_prod}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # MUST be set via environment variable
+      - YSQL_USER=${YUGABYTE_USER:-keycloak_prod}
+      - YSQL_PASSWORD=${YUGABYTE_PASSWORD}  # MUST be set via environment variable
+      - YSQL_DB=${YUGABYTE_DB:-keycloak_prod}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-keycloak_prod}"]
+      test: ["CMD-SHELL", "postgres/bin/pg_isready -h localhost -p 5433 -U ${YUGABYTE_USER:-keycloak_prod} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 4G
+        reservations:
+          cpus: '2'
+          memory: 2G
+
+  dragonflydb:
+    restart: always
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.15.1
+    command:
+      - "--requirepass"
+      - "${DRAGONFLY_PASSWORD}"  # MUST be set via environment variable
+      - "--maxmemory"
+      - "2gb"
+      - "--cache_mode"
+      - "--logtostderr"
     deploy:
       resources:
         limits:
@@ -28,9 +54,9 @@ services:
     restart: always
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-keycloak_prod}
-      KC_DB_USERNAME: ${POSTGRES_USER:-keycloak_prod}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_DB_URL: jdbc:postgresql://yugabytedb:5433/${YUGABYTE_DB:-keycloak_prod}
+      KC_DB_USERNAME: ${YUGABYTE_USER:-keycloak_prod}
+      KC_DB_PASSWORD: ${YUGABYTE_PASSWORD}
       KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}  # MUST be set (e.g., auth.example.com)
       KC_HOSTNAME_STRICT: "true"
       KC_HOSTNAME_STRICT_HTTPS: "true"
@@ -58,6 +84,7 @@ services:
       APP_HOST: 0.0.0.0
       APP_PORT: 8080
       SECRET_KEY: ${SECRET_KEY}  # MUST be set via environment variable
+      REDIS_URL: redis://:${DRAGONFLY_PASSWORD}@dragonflydb:6379/0
     command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--threads", "2", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:create_app()"]
     deploy:
       replicas: 2
@@ -90,6 +117,9 @@ services:
       OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
       OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
       OAUTH2_PROXY_HTTPS_ADDRESS: 0.0.0.0:4443
+      # Session storage in DragonflyDB
+      OAUTH2_PROXY_SESSION_STORE_TYPE: redis
+      OAUTH2_PROXY_REDIS_CONNECTION_URL: redis://:${DRAGONFLY_PASSWORD}@dragonflydb:6379/1
     deploy:
       resources:
         limits:

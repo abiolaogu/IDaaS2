@@ -135,3 +135,5 @@ secrets/
 
 # Docker volumes
 postgres_data/
+yugabytedb_data/
+dragonflydb_data/
