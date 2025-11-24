@@ -1,0 +1,100 @@
+version: '3.8'
+
+# Production-specific configuration
+# Override base docker-compose.yml for production deployments
+
+services:
+  postgres:
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-keycloak_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-keycloak_prod}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # MUST be set via environment variable
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-keycloak_prod}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  keycloak:
+    restart: always
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-keycloak_prod}
+      KC_DB_USERNAME: ${POSTGRES_USER:-keycloak_prod}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}  # MUST be set (e.g., auth.example.com)
+      KC_HOSTNAME_STRICT: "true"
+      KC_HOSTNAME_STRICT_HTTPS: "true"
+      KC_PROXY: edge
+      KC_HTTP_ENABLED: "false"
+      KC_HTTPS_ENABLED: "true"
+      KC_LOG_LEVEL: INFO
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}  # MUST be set
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  webapp:
+    restart: always
+    environment:
+      FLASK_APP: app:create_app()
+      FLASK_ENV: production
+      LOG_LEVEL: INFO
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      SECRET_KEY: ${SECRET_KEY}  # MUST be set via environment variable
+    command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--threads", "2", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:create_app()"]
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  oauth2-proxy:
+    restart: always
+    environment:
+      OAUTH2_PROXY_PROVIDER: keycloak-oidc
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_CLIENT_ID}  # MUST be set
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_CLIENT_SECRET}  # MUST be set
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET}  # MUST be 16, 24, or 32 bytes
+      OAUTH2_PROXY_OIDC_ISSUER_URL: https://${KEYCLOAK_HOSTNAME}/realms/master
+      OAUTH2_PROXY_REDIRECT_URL: https://${APP_HOSTNAME}/oauth2/callback
+      OAUTH2_PROXY_UPSTREAMS: http://webapp:8080
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_EMAIL_DOMAINS:-*}
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_HTTPONLY: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_HTTPS_ADDRESS: 0.0.0.0:4443
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
