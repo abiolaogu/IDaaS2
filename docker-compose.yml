@@ -92,7 +92,7 @@ services:
       OAUTH2_PROXY_PROVIDER: keycloak-oidc
       OAUTH2_PROXY_CLIENT_ID: webapp-client
       OAUTH2_PROXY_CLIENT_SECRET: changeme
-      OAUTH2_PROXY_COOKIE_SECRET: changeme-32-character-secret!!
+      OAUTH2_PROXY_COOKIE_SECRET: changeme-32-character-secret123
       OAUTH2_PROXY_OIDC_ISSUER_URL: http://keycloak:8080/realms/master
       OAUTH2_PROXY_REDIRECT_URL: http://localhost:4180/oauth2/callback
       OAUTH2_PROXY_UPSTREAMS: http://webapp:8080
