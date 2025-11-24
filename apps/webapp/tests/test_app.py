@@ -1,5 +1,6 @@
 """Tests for application factory."""
 import pytest
+import os
 from app import create_app
 
 
@@ -22,10 +23,11 @@ class TestAppFactory:
         app = create_app('testing')
         assert app.config['TESTING'] is True
 
-    def test_create_app_production(self):
-        """Test creating app with production configuration."""
-        app = create_app('production')
-        assert app.config['DEBUG'] is False
+    def test_create_app_production_requires_secret_key(self):
+        """Test that production configuration requires SECRET_KEY to be set."""
+        # Without SECRET_KEY, production should raise ValueError
+        with pytest.raises(ValueError, match='SECRET_KEY must be set'):
+            create_app('production')
 
     def test_blueprints_registered(self):
         """Test that blueprints are registered."""
