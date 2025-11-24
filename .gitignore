@@ -111,3 +111,27 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# IDaaS Platform specific
+# Security scan reports
+bandit-report.json
+safety-report.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Secrets and keys
+secrets/
+*.pem
+*.key
+*.crt
+.env.local
+.env.*.local
+
+# Docker volumes
+postgres_data/
