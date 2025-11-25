@@ -1,0 +1,71 @@
+version: '3.8'
+
+# CI/CD-specific configuration
+# Uses local database containers for testing (not DBaaS)
+
+services:
+  # Local YugabyteDB for CI testing
+  yugabytedb:
+    image: yugabytedb/yugabyte:2.21.0.0-b545
+    container_name: idaas-yugabytedb-ci
+    command: >
+      bin/yugabyted start
+      --daemon=false
+      --ui=false
+      --tserver_flags="yb_enable_read_committed_isolation=true"
+    environment:
+      - YSQL_USER=keycloak
+      - YSQL_PASSWORD=ci_test_password
+      - YSQL_DB=keycloak
+    networks:
+      - idaas-network
+    healthcheck:
+      test: ["CMD-SHELL", "postgres/bin/pg_isready -h localhost -p 5433 -U keycloak || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Local DragonflyDB for CI testing
+  dragonflydb:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.15.1
+    container_name: idaas-dragonflydb-ci
+    command: ["--requirepass", "ci_test_password"]
+    networks:
+      - idaas-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "ci_test_password", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Override Keycloak to use local YugabyteDB
+  keycloak:
+    environment:
+      KC_DB_URL: jdbc:postgresql://yugabytedb:5433/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ci_test_password
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    depends_on:
+      yugabytedb:
+        condition: service_healthy
+      dragonflydb:
+        condition: service_healthy
+
+  # Override WebApp to use local DragonflyDB
+  webapp:
+    environment:
+      REDIS_URL: redis://:ci_test_password@dragonflydb:6379/0
+      SECRET_KEY: ci-test-secret-key-not-for-production
+
+  # Override OAuth2 Proxy to use local DragonflyDB
+  oauth2-proxy:
+    environment:
+      OAUTH2_PROXY_CLIENT_SECRET: ci-test-client-secret
+      OAUTH2_PROXY_COOKIE_SECRET: ci-test-cookie-secret-32chars!!
+      OAUTH2_PROXY_REDIS_CONNECTION_URL: redis://:ci_test_password@dragonflydb:6379/1
+    depends_on:
+      - keycloak
+      - webapp
+      - dragonflydb

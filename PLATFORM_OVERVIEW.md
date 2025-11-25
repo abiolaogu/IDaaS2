@@ -473,7 +473,60 @@ Internet
 
 ## Hardware Requirements
 
-### Minimum Requirements (Development/Testing)
+### Recommended: Managed DBaaS Deployment
+
+**✅ RECOMMENDED**: Use managed DBaaS for YugabyteDB and DragonflyDB to reduce hardware requirements by **75%** and eliminate database management overhead.
+
+See `DBAAS_DEPLOYMENT.md` for detailed DBaaS deployment instructions.
+
+#### Minimum Requirements (Development/Testing) - With DBaaS
+
+**Single Node Deployment** (Application services only)
+
+| Component | Specification |
+|-----------|--------------|
+| **CPU** | 2 cores (2.0 GHz or higher) |
+| **RAM** | 4 GB |
+| **Storage** | 30 GB SSD |
+| **Network** | 100 Mbps |
+| **OS** | Ubuntu 20.04+, CentOS 8+, RHEL 8+ |
+
+**Per Service Breakdown** (DBaaS offloads databases):
+- Keycloak: 1.5 GB RAM, 1 CPU core
+- Webapp: 512 MB RAM, 0.5 CPU core
+- OAuth2 Proxy: 256 MB RAM, 0.25 CPU core
+- OS & Overhead: 1.7 GB RAM, 0.25 CPU core
+
+#### Recommended Requirements (Production) - With DBaaS
+
+**2-Node HA Deployment** (Application services only)
+
+| Component | Specification |
+|-----------|--------------|
+| **CPU** | 4 cores (2.5 GHz or higher) |
+| **RAM** | 8 GB |
+| **Storage** | 100 GB SSD |
+| **Network** | 1 Gbps |
+| **OS** | Ubuntu 22.04 LTS, RHEL 9 |
+
+**Per Service Breakdown** (DBaaS offloads databases):
+- Keycloak: 2-4 GB RAM, 2 CPU cores
+- Webapp: 1-2 GB RAM, 1 CPU core
+- OAuth2 Proxy: 512 MB RAM, 0.5 CPU core
+- HAProxy + Keepalived: 256 MB RAM, 0.25 CPU core
+- OS & Overhead: 2 GB RAM, 0.25 CPU core
+
+**DBaaS Requirements** (Managed externally):
+- YugabyteDB DBaaS: 2-4 vCPU, 8-16 GB RAM, 100-500 GB storage
+- DragonflyDB DBaaS: 1-2 vCPU, 2-4 GB memory
+
+**Total Cost Savings**: ~60% lower TCO vs self-hosted over 3 years
+
+### Alternative: Self-Hosted Database Deployment
+
+**⚠️ NOT RECOMMENDED**: Self-hosting databases requires 4x more resources and significant operational overhead.
+
+#### Minimum Requirements (Development/Testing) - Self-Hosted
 
 **Single Node Deployment**
 
@@ -493,7 +546,7 @@ Internet
 - OAuth2 Proxy: 256 MB RAM, 0.25 CPU core
 - OS & Overhead: 2 GB RAM, 0.75 CPU core
 
-### Recommended Requirements (Small Production)
+#### Recommended Requirements (Small Production) - Self-Hosted
 
 **Single Node or 2-Node Deployment**
 

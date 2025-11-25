@@ -2,60 +2,15 @@ version: '3.8'
 
 # Production-specific configuration
 # Override base docker-compose.yml for production deployments
+# NOTE: Uses external DBaaS for YugabyteDB and DragonflyDB
 
 services:
-  yugabytedb:
-    restart: always
-    image: yugabytedb/yugabyte:2.21.0.0-b545
-    command: >
-      bin/yugabyted start
-      --daemon=false
-      --ui=false
-      --tserver_flags="yb_enable_read_committed_isolation=true,ysql_max_connections=400"
-    environment:
-      - YSQL_USER=${YUGABYTE_USER:-keycloak_prod}
-      - YSQL_PASSWORD=${YUGABYTE_PASSWORD}  # MUST be set via environment variable
-      - YSQL_DB=${YUGABYTE_DB:-keycloak_prod}
-    healthcheck:
-      test: ["CMD-SHELL", "postgres/bin/pg_isready -h localhost -p 5433 -U ${YUGABYTE_USER:-keycloak_prod} || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          cpus: '4'
-          memory: 4G
-        reservations:
-          cpus: '2'
-          memory: 2G
-
-  dragonflydb:
-    restart: always
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v1.15.1
-    command:
-      - "--requirepass"
-      - "${DRAGONFLY_PASSWORD}"  # MUST be set via environment variable
-      - "--maxmemory"
-      - "2gb"
-      - "--cache_mode"
-      - "--logtostderr"
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '1'
-          memory: 1G
-
   keycloak:
     restart: always
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://yugabytedb:5433/${YUGABYTE_DB:-keycloak_prod}
-      KC_DB_USERNAME: ${YUGABYTE_USER:-keycloak_prod}
+      KC_DB_URL: ${YUGABYTE_DB_URL}
+      KC_DB_USERNAME: ${YUGABYTE_USER}
       KC_DB_PASSWORD: ${YUGABYTE_PASSWORD}
       KC_HOSTNAME: ${KEYCLOAK_HOSTNAME}  # MUST be set (e.g., auth.example.com)
       KC_HOSTNAME_STRICT: "true"
@@ -83,48 +38,47 @@ services:
       LOG_LEVEL: INFO
       APP_HOST: 0.0.0.0
       APP_PORT: 8080
-      SECRET_KEY: ${SECRET_KEY}  # MUST be set via environment variable
-      REDIS_URL: redis://:${DRAGONFLY_PASSWORD}@dragonflydb:6379/0
-    command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--threads", "2", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:create_app()"]
+      REDIS_URL: ${DRAGONFLY_URL}
+      SECRET_KEY: ${SECRET_KEY}  # MUST be set
+    volumes: []  # Remove development volume mount
+    command: ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--threads", "2", "--access-logfile", "-", "--error-logfile", "-", "app:create_app()"]
     deploy:
-      replicas: 2
       resources:
         limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
           cpus: '1'
           memory: 1G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-      restart_policy:
-        condition: on-failure
-        delay: 5s
-        max_attempts: 3
+      replicas: 1  # Can scale horizontally with load balancer
 
   oauth2-proxy:
     restart: always
     environment:
       OAUTH2_PROXY_PROVIDER: keycloak-oidc
-      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_CLIENT_ID}  # MUST be set
-      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_CLIENT_SECRET}  # MUST be set
-      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET}  # MUST be 16, 24, or 32 bytes
-      OAUTH2_PROXY_OIDC_ISSUER_URL: https://${KEYCLOAK_HOSTNAME}/realms/master
-      OAUTH2_PROXY_REDIRECT_URL: https://${APP_HOSTNAME}/oauth2/callback
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_COOKIE_SECRET}
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OAUTH2_OIDC_ISSUER_URL}
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_REDIRECT_URL}
       OAUTH2_PROXY_UPSTREAMS: http://webapp:8080
       OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_EMAIL_DOMAINS:-*}
-      OAUTH2_PROXY_COOKIE_SECURE: "true"
-      OAUTH2_PROXY_COOKIE_HTTPONLY: "true"
-      OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"  # Enable in production with HTTPS
       OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
       OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
-      OAUTH2_PROXY_HTTPS_ADDRESS: 0.0.0.0:4443
-      # Session storage in DragonflyDB
+      # Session storage in external DragonflyDB DBaaS
       OAUTH2_PROXY_SESSION_STORE_TYPE: redis
-      OAUTH2_PROXY_REDIS_CONNECTION_URL: redis://:${DRAGONFLY_PASSWORD}@dragonflydb:6379/1
+      OAUTH2_PROXY_REDIS_CONNECTION_URL: ${DRAGONFLY_SESSION_URL}
     deploy:
       resources:
         limits:
-          cpus: '0.5'
+          cpus: '1'
           memory: 512M
         reservations:
-          cpus: '0.25'
+          cpus: '0.5'
           memory: 256M
+
+# Note: No volumes needed for databases as they are managed by DBaaS
+networks:
+  idaas-network:
+    driver: bridge

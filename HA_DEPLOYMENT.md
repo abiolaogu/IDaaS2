@@ -2,6 +2,8 @@
 
 This guide explains how to deploy the IDaaS platform in an active-active high availability configuration across two virtual machines on different physical servers, with a load balancer providing a single Virtual IP (VIP) for access.
 
+**IMPORTANT**: This guide assumes you are using **managed DBaaS** for YugabyteDB and DragonflyDB. For DBaaS-specific deployment instructions, see `DBAAS_DEPLOYMENT.md`.
+
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
@@ -76,6 +78,22 @@ This guide explains how to deploy the IDaaS platform in an active-active high av
 
 ### Hardware Requirements
 
+**With DBaaS (Recommended) - 75% Less Resources**:
+
+**Minimum per VM**:
+- 4 CPU cores
+- 8 GB RAM
+- 100 GB SSD storage
+- 1 Gbps network interface
+
+**Recommended per VM**:
+- 8 CPU cores
+- 16 GB RAM
+- 200 GB SSD storage
+- 10 Gbps network interface
+
+**Self-Hosted Databases (Not Recommended)**:
+
 **Minimum per VM**:
 - 4 CPU cores
 - 16 GB RAM
@@ -87,6 +105,8 @@ This guide explains how to deploy the IDaaS platform in an active-active high av
 - 32 GB RAM
 - 500 GB SSD storage
 - 10 Gbps network interface
+
+**Recommendation**: Use managed DBaaS to reduce hardware requirements by 75% and eliminate database management overhead. See `DBAAS_DEPLOYMENT.md` for details.
 
 ### Physical Server Requirements
 
