@@ -2,6 +2,28 @@ version: '3.8'
 
 # Development-specific overrides
 services:
+  yugabytedb:
+    ports:
+      - "5433:5433"
+      - "9000:9000"  # YugabyteDB Master UI
+      - "7000:7000"  # Master RPC
+      - "9100:9100"  # TServer UI
+    environment:
+      - YSQL_USER=keycloak_dev
+      - YSQL_PASSWORD=dev_password
+      - YSQL_DB=keycloak_dev
+    healthcheck:
+      test: ["CMD-SHELL", "postgres/bin/pg_isready -h localhost -p 5433 -U keycloak_dev || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  dragonflydb:
+    ports:
+      - "6379:6379"
+    command: ["--requirepass", "dev_dragonfly_password", "--logtostderr"]
+
   webapp:
     build:
       target: builder
@@ -10,6 +32,7 @@ services:
       FLASK_ENV: development
       FLASK_DEBUG: "1"
       LOG_LEVEL: DEBUG
+      REDIS_URL: redis://:dev_dragonfly_password@dragonflydb:6379/0
     volumes:
       - ./apps/webapp:/app
       - /app/__pycache__
@@ -17,22 +40,13 @@ services:
     ports:
       - "5000:8080"
 
-  postgres:
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_DB: keycloak_dev
-      POSTGRES_USER: keycloak_dev
-      POSTGRES_PASSWORD: dev_password
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keycloak_dev"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   keycloak:
     environment:
       KC_LOG_LEVEL: DEBUG
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak_dev
+      KC_DB_URL: jdbc:postgresql://yugabytedb:5433/keycloak_dev
       KC_DB_USERNAME: keycloak_dev
       KC_DB_PASSWORD: dev_password
+
+  oauth2-proxy:
+    environment:
+      OAUTH2_PROXY_REDIS_CONNECTION_URL: redis://:dev_dragonfly_password@dragonflydb:6379/1
