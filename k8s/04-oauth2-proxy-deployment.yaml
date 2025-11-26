@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: idaas
+  labels:
+    app: oauth2-proxy
+    tier: gateway
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app: oauth2-proxy
+        tier: gateway
+        version: v1
+    spec:
+      serviceAccountName: idaas-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: oauth2-proxy
+        image: ${CONTAINER_REGISTRY}/idaas-oauth2-proxy:${IMAGE_TAG}
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 4180
+          protocol: TCP
+        env:
+        - name: OAUTH2_PROXY_PROVIDER
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_PROVIDER
+        - name: OAUTH2_PROXY_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: idaas-secrets
+              key: oauth2-client-id
+        - name: OAUTH2_PROXY_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: idaas-secrets
+              key: oauth2-client-secret
+        - name: OAUTH2_PROXY_COOKIE_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: idaas-secrets
+              key: oauth2-cookie-secret
+        - name: OAUTH2_PROXY_OIDC_ISSUER_URL
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_OIDC_ISSUER_URL
+        - name: OAUTH2_PROXY_REDIRECT_URL
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_REDIRECT_URL
+        - name: OAUTH2_PROXY_UPSTREAMS
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_UPSTREAMS
+        - name: OAUTH2_PROXY_EMAIL_DOMAINS
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_EMAIL_DOMAINS
+        - name: OAUTH2_PROXY_COOKIE_SECURE
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_COOKIE_SECURE
+        - name: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_SKIP_PROVIDER_BUTTON
+        - name: OAUTH2_PROXY_HTTP_ADDRESS
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_HTTP_ADDRESS
+        - name: OAUTH2_PROXY_SESSION_STORE_TYPE
+          valueFrom:
+            configMapKeyRef:
+              name: idaas-config
+              key: OAUTH2_PROXY_SESSION_STORE_TYPE
+        - name: OAUTH2_PROXY_REDIS_CONNECTION_URL
+          valueFrom:
+            secretKeyRef:
+              name: idaas-secrets
+              key: dragonfly-session-url
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 4180
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 4180
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy-service
+  namespace: idaas
+  labels:
+    app: oauth2-proxy
+spec:
+  type: ClusterIP
+  ports:
+  - name: http
+    port: 4180
+    targetPort: 4180
+    protocol: TCP
+  selector:
+    app: oauth2-proxy
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: oauth2-proxy-pdb
+  namespace: idaas
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: oauth2-proxy

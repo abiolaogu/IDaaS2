@@ -1,0 +1,242 @@
+name: Deploy to Kubernetes
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/idaas
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        component:
+          - name: webapp
+            context: ./apps/webapp
+            dockerfile: ./apps/webapp/Dockerfile
+          - name: keycloak
+            context: ./apps/keycloak
+            dockerfile: ./apps/keycloak/Dockerfile
+          - name: oauth2-proxy
+            context: ./apps/oauth2-proxy
+            dockerfile: ./apps/oauth2-proxy/Dockerfile
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.component.name }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ${{ matrix.component.context }}
+        file: ${{ matrix.component.dockerfile }}
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          APP_VERSION=${{ github.ref_name }}
+          BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          VCS_REF=${{ github.sha }}
+
+    - name: Image digest
+      run: echo ${{ steps.meta.outputs.digest }}
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.example.com
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Configure kubectl for staging
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > $HOME/.kube/config
+        kubectl config use-context staging
+
+    - name: Prepare Kubernetes manifests
+      run: |
+        export CONTAINER_REGISTRY=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
+        export IMAGE_TAG=${{ github.sha }}
+
+        # Replace placeholders in manifests
+        for file in k8s/*.yaml; do
+          envsubst < $file > $(basename $file)
+        done
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f 00-namespace.yaml
+        kubectl apply -f 01-secrets-configmap.yaml
+        kubectl apply -f 02-keycloak-deployment.yaml
+        kubectl apply -f 03-webapp-deployment.yaml
+        kubectl apply -f 04-oauth2-proxy-deployment.yaml
+        kubectl apply -f 05-ingress.yaml
+        kubectl apply -f 06-rbac-network-policy.yaml
+
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/keycloak -n idaas --timeout=5m
+        kubectl rollout status deployment/webapp -n idaas --timeout=5m
+        kubectl rollout status deployment/oauth2-proxy -n idaas --timeout=5m
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods -n idaas
+        kubectl get svc -n idaas
+        kubectl get ingress -n idaas
+
+    - name: Run smoke tests
+      run: |
+        sleep 30
+        kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+          curl -f http://webapp-service.idaas:8080/health || exit 1
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://app.example.com
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+
+    - name: Configure kubectl for production
+      run: |
+        mkdir -p $HOME/.kube
+        echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+        kubectl config use-context production
+
+    - name: Prepare Kubernetes manifests
+      run: |
+        export CONTAINER_REGISTRY=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}
+        export IMAGE_TAG=${{ github.ref_name }}
+
+        # Replace placeholders in manifests
+        for file in k8s/*.yaml; do
+          envsubst < $file > $(basename $file)
+        done
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f 00-namespace.yaml
+        kubectl apply -f 01-secrets-configmap.yaml
+        kubectl apply -f 02-keycloak-deployment.yaml
+        kubectl apply -f 03-webapp-deployment.yaml
+        kubectl apply -f 04-oauth2-proxy-deployment.yaml
+        kubectl apply -f 05-ingress.yaml
+        kubectl apply -f 06-rbac-network-policy.yaml
+
+    - name: Wait for rollout
+      run: |
+        kubectl rollout status deployment/keycloak -n idaas --timeout=10m
+        kubectl rollout status deployment/webapp -n idaas --timeout=10m
+        kubectl rollout status deployment/oauth2-proxy -n idaas --timeout=10m
+
+    - name: Verify deployment
+      run: |
+        kubectl get pods -n idaas
+        kubectl get svc -n idaas
+        kubectl get ingress -n idaas
+
+    - name: Run smoke tests
+      run: |
+        sleep 60
+        kubectl run curl-test --image=curlimages/curl:latest --rm -i --restart=Never -- \
+          curl -f http://webapp-service.idaas:8080/health || exit 1
+
+    - name: Create deployment record
+      run: |
+        kubectl annotate deployment/webapp -n idaas \
+          deployment.kubernetes.io/revision="${{ github.run_number }}" \
+          deployment.kubernetes.io/deployed-by="${{ github.actor }}" \
+          deployment.kubernetes.io/deployed-at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+          --overwrite
+
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "✅ Successfully deployed to production"
+        echo "Version: ${{ github.ref_name }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Deployed by: ${{ github.actor }}"
+
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [deploy-staging, deploy-production]
+
+    steps:
+    - name: Rollback on failure
+      run: |
+        echo "Deployment failed. Rolling back..."
+        kubectl rollout undo deployment/keycloak -n idaas || true
+        kubectl rollout undo deployment/webapp -n idaas || true
+        kubectl rollout undo deployment/oauth2-proxy -n idaas || true
