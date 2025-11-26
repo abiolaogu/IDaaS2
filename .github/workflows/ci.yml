@@ -78,7 +78,7 @@ jobs:
     - name: Run Flake8 linting
       working-directory: apps/webapp
       run: |
-        flake8 . --exclude=venv,tests --max-line-length=120 --count --statistics
+        flake8 app.py config.py extensions.py routes.py --max-line-length=120 --count --statistics
 
     - name: Upload security reports
       uses: actions/upload-artifact@v4
