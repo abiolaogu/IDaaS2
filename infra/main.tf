@@ -10,7 +10,8 @@ terraform {
 }
 
 provider "kubernetes" {
-  # TODO: Configure Kubernetes provider
+  config_path    = "~/.kube/config"
+  config_context = "minikube"
 }
 
 resource "kubernetes_namespace" "idaas" {
