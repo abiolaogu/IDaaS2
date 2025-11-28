@@ -1,11 +1,22 @@
 """Application routes and views."""
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, current_app
 from datetime import datetime
 import platform
 import sys
+import orjson
+from flask import Response
 
 # Create blueprint for main routes
 main_bp = Blueprint('main', __name__)
+
+
+def json_response(data, status=200):
+    """Create a JSON response using orjson."""
+    return Response(
+        orjson.dumps(data),
+        status=status,
+        mimetype='application/json'
+    )
 
 
 @main_bp.route('/')
@@ -26,25 +37,25 @@ def index():
                 "email": email,
                 "groups": groups.split(',') if groups else []
             }
-            return jsonify(response_data), 200
+            return json_response(response_data), 200
         else:
             current_app.logger.debug("Unauthenticated request")
-            return jsonify({
+            return json_response({
                 "message": "Hello, stranger! You are not authenticated.",
                 "authenticated": False
             }), 200
     except Exception as e:
         current_app.logger.error(f"Error processing request: {str(e)}")
-        return jsonify({
+        return json_response({
             "error": "Failed to process request",
             "message": str(e)
-        }), 500
+        }, status=500)
 
 
 @main_bp.route('/health')
 def health():
     """Health check endpoint for monitoring and load balancers."""
-    return jsonify({
+    return json_response({
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "service": current_app.config['APP_NAME'],
@@ -58,22 +69,22 @@ def readiness():
     # Add any checks here (database connections, external services, etc.)
     try:
         # For now, just return ready
-        return jsonify({
+        return json_response({
             "status": "ready",
             "timestamp": datetime.utcnow().isoformat()
         }), 200
     except Exception as e:
         current_app.logger.error(f"Readiness check failed: {str(e)}")
-        return jsonify({
+        return json_response({
             "status": "not ready",
             "error": str(e)
-        }), 503
+        }, status=503)
 
 
 @main_bp.route('/liveness')
 def liveness():
     """Liveness probe for Kubernetes."""
-    return jsonify({
+    return json_response({
         "status": "alive",
         "timestamp": datetime.utcnow().isoformat()
     }), 200
@@ -82,7 +93,7 @@ def liveness():
 @main_bp.route('/metrics')
 def metrics():
     """Basic application metrics endpoint."""
-    return jsonify({
+    return json_response({
         "app_name": current_app.config['APP_NAME'],
         "version": current_app.config['APP_VERSION'],
         "python_version": sys.version,
@@ -100,12 +111,12 @@ def user_info():
         groups = request.headers.get(current_app.config['FORWARDED_GROUPS_HEADER'])
 
         if not email:
-            return jsonify({
+            return json_response({
                 "error": "Not authenticated",
                 "authenticated": False
-            }), 401
+            }, status=401)
 
-        return jsonify({
+        return json_response({
             "authenticated": True,
             "email": email,
             "username": user,
@@ -114,7 +125,7 @@ def user_info():
         }), 200
     except Exception as e:
         current_app.logger.error(f"Error retrieving user info: {str(e)}")
-        return jsonify({
+        return json_response({
             "error": "Failed to retrieve user information",
             "message": str(e)
-        }), 500
+        }, status=500)
