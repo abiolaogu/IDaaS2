@@ -14,7 +14,7 @@ class Config:
     # Application settings
     APP_NAME = 'IDaaS Platform'
     APP_VERSION = '1.0.0'
-    HOST = os.environ.get('APP_HOST', '0.0.0.0')
+    HOST = os.environ.get('APP_HOST', '0.0.0.0')  # nosec B104 - Intentional for containerized deployment
     PORT = int(os.environ.get('APP_PORT', 8080))
 
     # Security settings
