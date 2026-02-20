@@ -202,3 +202,6 @@ dragonflydb_data/
 !**/ios/**/default.mode2v3
 !**/ios/**/default.pbxuser
 !**/ios/**/default.perspectivev3
+web/dist/
+*.tsbuildinfo
+**/.dart_tool/
